@@ -75,30 +75,38 @@ def clearForehead(forehead, avgSkinColor):
 
 
 def facial_landmarks(image, eyeOnlyMode=False, allowEnhancement=False):
+   import cv2
+import dlib
+import numpy as np
+from imutils import face_utils
+
+def facial_landmarks(image, eyeOnlyMode=False, allowEnhancement=False):
     # Function to perform facial landmark detection on the whole face
-
-    # Use dlib 68 & 81 to predict landmarks points coordinates
+    
+    # Initialize the face detector and predictor models
     detector = dlib.get_frontal_face_detector()
-    predictor68 = dlib.shape_predictor('mod/shape_predictor_68_face_landmarks.dat')
-
-    predictor81 = dlib.shape_predictor('mod/shape_predictor_81_face_landmarks.dat')
+    predictor68 = dlib.shape_predictor('../shape_predictor_68_face_landmarks.dat')
+    predictor81 = dlib.shape_predictor('../shape_predictor_81_face_landmarks.dat')
     
-    # Grayscale image
-    try:
+    # Ensure the image is in grayscale
+    if len(image.shape) == 3:  # Check if image is color
         grayscale_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    except:
-        grayscale_image = image
+    else:
+        grayscale_image = image  # Image is already grayscale
     
-    # Ensure image is grayscale
-    if len(image.shape) != 2:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    print("no")
+    print(f"Grayscale image shape: {grayscale_image.shape}")
+   
+    # Detect faces
+    rectangles = detector(grayscale_image, 2)
 
-    
+    print("bitch")
 
-    # array of rectangles surrounding faces detected
-    rectangles = detector(grayscale_image, 1)
+    if len(rectangles) == 0:
+        print("No faces detected.")
+    else:
+        print(f"Number of faces detected: {len(rectangles)}")
 
-    # If at least one face is detected   
     if len(rectangles) > 0:
         # Get 68 landmark points
         faceLandmarks = predictor68(grayscale_image, rectangles[0])
@@ -107,73 +115,67 @@ def facial_landmarks(image, eyeOnlyMode=False, allowEnhancement=False):
         if eyeOnlyMode:
             # Return eye points to perform a calculated rotation
             return np.array([faceLandmarks[39], faceLandmarks[42]])
-        
+
         # Get 81 landmark points
         foreheadLandmarks = predictor81(grayscale_image, rectangles[0])
         foreheadLandmarks = face_utils.shape_to_np(foreheadLandmarks)
         
-        # Get 68 point from -68- predictor (higher accuracy) + forehead from -81- predictor
+        # Combine 68 points (from predictor68) and 13 forehead points (from predictor81)
         fullFacePoints = np.concatenate((faceLandmarks, foreheadLandmarks[68:]))
         
-        # Get forehead region & height to perform simple improvement
-        x,y,x2,y2 = (fullFacePoints[69,0]-10, fullFacePoints[68,1], fullFacePoints[80,0]+10, fullFacePoints[23, 1])
-        foreheadRegion = grayscale_image[y:y2,x:x2]
+        # Extract forehead region & height for improvement logic
+        x, y, x2, y2 = fullFacePoints[69, 0] - 10, fullFacePoints[68, 1], fullFacePoints[80, 0] + 10, fullFacePoints[23, 1]
+        foreheadRegion = grayscale_image[y:y2, x:x2]
         foreheadHeight = foreheadRegion.shape[0]
-        
+
         if allowEnhancement:
-            # Perform progressive quality improvement
-            # Get nose region to get average skin color
-            x,y,x2,y2 = (fullFacePoints[28,0]-5, fullFacePoints[28,1], fullFacePoints[28,0]+5, fullFacePoints[30,1])
+            # Use the nose region to estimate skin color and improve landmark positions
+            x, y, x2, y2 = fullFacePoints[28, 0] - 5, fullFacePoints[28, 1], fullFacePoints[28, 0] + 5, fullFacePoints[30, 1]
             noseRegion = grayscale_image[y:y2, x:x2]
-            avgSkinColor = np.average(noseRegion[:,:])
-            
-            # Check if forehead is clear -> perform heuristic based enhancement
+            avgSkinColor = np.average(noseRegion)
+
+            # Check if forehead region is clear (use your custom logic here)
             forehead_is_clear = clearForehead(foreheadRegion, avgSkinColor)
-            originalPoints = fullFacePoints[[69,70,71,73,80]]
-            
+            originalPoints = fullFacePoints[[69, 70, 71, 73, 80]]
+
             if forehead_is_clear:
                 avgSkinColor = np.average(foreheadRegion)
-                
-                # Modify some points for more accuracy
-                # Point[68] will be center between lower-lip & chin
-                distance = int((fullFacePoints[8,1]-fullFacePoints[57,1]) / 2)
-                fullFacePoints[68] = np.array([fullFacePoints[8,0], fullFacePoints[8,1]-distance])
-                
-                # Enhance points locations
+
+                # Adjust points for more accurate placement
+                distance = int((fullFacePoints[8, 1] - fullFacePoints[57, 1]) / 2)
+                fullFacePoints[68] = np.array([fullFacePoints[8, 0], fullFacePoints[8, 1] - distance])
+
+                # Enhance points based on skin color and forehead height
                 enhancedPoints = np.array([moveUp(grayscale_image, orgPoint, avgSkinColor, foreheadHeight) for orgPoint in originalPoints])
+                fullFacePoints[[69, 70, 71, 73, 80]] = enhancedPoints
 
-                # Assign original points to enhanced points (some maybe the same)
-                fullFacePoints[[69,70,71,73,80]] = enhancedPoints  
-                
-                # Adjust points to fix any corruptions
-                fullFacePoints[[69,70,71,73,80]] = adjustPoints(enhancedPoints, fullFacePoints[76], fullFacePoints[79])
+                # Adjust points to avoid corruption (heuristic correction)
+                fullFacePoints[[69, 70, 71, 73, 80]] = adjustPoints(enhancedPoints, fullFacePoints[76], fullFacePoints[79])
 
-                #Prepare point[72] for center of forehead
-                distance = (fullFacePoints[22,0] - fullFacePoints[21,0]) / 2
-                distanceY = (fullFacePoints[21,1] - fullFacePoints[71,1]) / 2
-                fullFacePoints[72] = np.array([fullFacePoints[21,0] + distance, fullFacePoints[21,1]-distanceY])
-                
-                # Point[74] sometimes have a fixed corruption, this line helps :)
-                fullFacePoints[74,0] -= foreheadHeight * 0.1 # Arbitery heurestic
-                
+                # Improve point[72] for center of forehead
+                distanceX = (fullFacePoints[22, 0] - fullFacePoints[21, 0]) / 2
+                distanceY = (fullFacePoints[21, 1] - fullFacePoints[71, 1]) / 2
+                fullFacePoints[72] = np.array([fullFacePoints[21, 0] + distanceX, fullFacePoints[21, 1] - distanceY])
+
+                # Fix potential corruption in point[74]
+                fullFacePoints[74, 0] -= foreheadHeight * 0.1
             else:
-                # If forehead isn't clear -> fix points with very simple heuristics
-                fullFacePoints[70,1] -= foreheadHeight * 0.2
-                fullFacePoints[71,1] -= foreheadHeight * 0.3
-                fullFacePoints[80,1] -= foreheadHeight * 0.2
-    
+                # Simple enhancement if forehead isn't clear
+                fullFacePoints[70, 1] -= foreheadHeight * 0.2
+                fullFacePoints[71, 1] -= foreheadHeight * 0.3
+                fullFacePoints[80, 1] -= foreheadHeight * 0.2
         else:
-            # If Enhancement is False -> do the simple enhancement, better quality + low performance :)
-            fullFacePoints[70,1] -= foreheadHeight * 0.2
-            fullFacePoints[71,1] -= foreheadHeight * 0.3
-            fullFacePoints[80,1] -= foreheadHeight * 0.2
-            pass
-        
-        return fullFacePoints
-    # No faces found
-    else:
-        return None
+            # Simple enhancement for non-allowance of deep enhancements
+            fullFacePoints[70, 1] -= foreheadHeight * 0.2
+            fullFacePoints[71, 1] -= foreheadHeight * 0.3
+            fullFacePoints[80, 1] -= foreheadHeight * 0.2
 
+        return fullFacePoints
+
+    else:
+        # No faces found
+        print("No faces detected!")
+        return None
 
 def adjustPoints(points, leftSidePoint, rightSidePoint):
     # Function to adjust landmarks points of the forehead & fix corruptions of improvement

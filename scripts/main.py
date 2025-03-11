@@ -26,12 +26,13 @@ def main():
     # Detect & Visualize each image
     for i in range(0,len(images)):
         originalImage = images[i]
-        cv2.imshow(winname, originalImage) 
-        cv2.waitKey(0)
+        #cv2.imshow(winname, originalImage) 
+        #cv2.waitKey(0)
         
+        print("fuck")
         # Detect eyes landmarks, to align the face later
         eyePoints = facial_landmarks(originalImage, eyeOnlyMode=True)
-        
+        print("bitch")
         if eyePoints is not None:
             
             # Align face and redetect landmarks
