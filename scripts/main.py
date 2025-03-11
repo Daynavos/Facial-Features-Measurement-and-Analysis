@@ -21,7 +21,7 @@ def main():
     cv2.moveWindow(winname, 40,30) 
     
     # Capture all images in current folder & their names
-    images, filesnames = load_images_from_folder('.')
+    images, filesnames = load_images_from_folder('img')
     
     # Detect & Visualize each image
     for i in range(0,len(images)):
