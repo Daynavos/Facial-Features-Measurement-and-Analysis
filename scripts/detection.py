@@ -79,8 +79,9 @@ def facial_landmarks(image, eyeOnlyMode=False, allowEnhancement=False):
 
     # Use dlib 68 & 81 to predict landmarks points coordinates
     detector = dlib.get_frontal_face_detector()
-    predictor68 = dlib.shape_predictor('../shape_predictor_68_face_landmarks.dat')
-    predictor81 = dlib.shape_predictor('../shape_predictor_81_face_landmarks.dat')
+    predictor68 = dlib.shape_predictor('mod/shape_predictor_68_face_landmarks.dat')
+
+    predictor81 = dlib.shape_predictor('mod/shape_predictor_81_face_landmarks.dat')
     
     # Grayscale image
     try:
@@ -88,6 +89,12 @@ def facial_landmarks(image, eyeOnlyMode=False, allowEnhancement=False):
     except:
         grayscale_image = image
     
+    # Ensure image is grayscale
+    if len(image.shape) != 2:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    
+
     # array of rectangles surrounding faces detected
     rectangles = detector(grayscale_image, 1)
 
